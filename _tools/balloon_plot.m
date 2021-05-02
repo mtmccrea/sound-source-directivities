@@ -1,7 +1,9 @@
-function [] = balloon_plot(coefficients, order, fs, sph_definition, f_to_plot)
+function [coefficients, D] = balloon_plot(coefficients, order, fs, sph_definition, f_to_plot)
 % Creates a ballon plot from spherical harmonic coefficients
 %  f_to_plot: vector frequencies to plot in Hz (default: [500 1000 2000
 %                                                                  4000])
+
+Nfft = size(coefficients, 1);
 
 if (nargin < 5)
     % plot 4 different frequencies
@@ -9,29 +11,71 @@ if (nargin < 5)
 end
 
 f_to_plot    = f_to_plot(f_to_plot < fs/2); % sort out
-bins_to_plot = round(f_to_plot/(fs/2) * size(coefficients, 1));
+bins_to_plot = round(f_to_plot/(fs/2) * Nfft);
 
 % update values
-f_to_plot = bins_to_plot/size(coefficients, 1) * fs/2;
+f_to_plot = bins_to_plot/Nfft * fs/2;
 
 % remove all unused data
-coefficients = coefficients(bins_to_plot, :);
+coefficients = coefficients(bins_to_plot, :); % [NplotBins x Nsh]
+
+[Nfreq2plot, Nsh] = size(coefficients);
 
 % set up a spatial grid 
 resolution        = 4*order; 
-alpha_v           = linspace(0, 2*pi, 2*resolution);  % azimuth
+alpha_v           = linspace(0, 2*pi, 2*resolution);    % azimuth
 beta_v            = linspace(0,   pi,   resolution+1);  % colatitude
 [alpha_m, beta_m] = meshgrid(alpha_v, beta_v);
 
 colatitude = beta_m(:).';
-azimuth = alpha_m(:).';
+azimuth    = alpha_m(:).';
+Npnt2plot = numel(azimuth); % number of points to plot
 
-% compute the directivity on the spatial grid
-D = zeros(size(coefficients, 1), size(azimuth, 2));
+% compute the directivity D on the spatial grid
+D = zeros(Nfreq2plot, Npnt2plot); % [NplotBins , NplotPnts]
 
-for l = 0 : order
-    for m = -l : l
-        D = D + repmat(coefficients(:, l^2+l+m+1), [1 size(azimuth, 2)]) .* repmat(sphharm(l, m, colatitude, azimuth, sph_definition), [size(coefficients, 1) 1]); 
+% % original
+% for l = 0 : order
+%     for m = -l : l
+%          D = D + repmat(coefficients(:, l^2+l+m+1), [1 size(azimuth, 2)]) .* repmat(sphharm(l, m, colatitude, azimuth, sph_definition), [size(coefficients, 1) 1]); 
+%     end
+% end
+
+% % annotated version - mtm
+% for l = 0 : order
+%     for m = -l : l
+%         idx_coeff = l^2+l+m+1;
+%         coeff_lm = coefficients(:, idx_coeff);
+%         % repeat each modal coeff for each plot direction
+%         coeff_x_pltpnt = repmat(coeff_lm, [1 Npnt2plot]); % [NplotBins NplotPnts]
+%         % SH probe of this SH mode in every plot direction
+%         sphHarm_pltdir = sphharm(l, m, colatitude, azimuth, sph_definition); % [1 x NplotPnts]
+%         % expand to number of plots
+%         sphHarm_pltdir = repmat(sphHarm_pltdir, [Nfreq2plot 1]);  % [NplotBins x NplotPnts]
+%         % scale this sampled harmonic by the modeal coefficient weight
+%         mode_scaled = coeff_x_pltpnt .* sphHarm_pltdir; % [NplotBins x NplotPnts] .* [NplotBins x NplotPnts]
+%         % sum this mode with the other modes for overall directivity
+%         D = D + mode_scaled;
+%     end
+% end
+
+% % plot-by-plot version - mtm
+for bini = 1:Nfreq2plot
+    for l = 0 : order
+        for m = -l : l
+            % select the complex weight for this mode
+            idx_coeff = l^2+l+m+1;
+            weight_lm = coefficients(bini, idx_coeff);
+            
+            % SH probe of this SH mode in every plot direction
+            lm_pltdir = sphharm(l, m, colatitude, azimuth, sph_definition); % [1 x NplotPnts]
+            
+            % scale this sampled mode by the coefficient weight
+            mode_dirs_weighted = lm_pltdir * weight_lm; % [1 x NplotPnts] .* [1]
+            
+            % sum this mode with the other modes for overall directivity
+            D(bini, :) = D(bini, :) + mode_dirs_weighted;
+        end
     end
 end
 
@@ -42,11 +86,18 @@ beta_m  = reshape(colatitude, resolution+1, []);
 %  --------------------- finally, plot data -------------------------------
 figure('Position', [100 100 500 500]);
 set(gcf, 'Color', [1 1 1]);
-    
-for n = 1 : length(f_to_plot)    
-    subplot(ceil(sqrt(length(f_to_plot))), ceil(sqrt(length(f_to_plot))), n);
+Nrowcol = ceil(sqrt(Nfreq2plot));
+
+tiledlayout(Nrowcol, Nrowcol, 'tilespacing', 'compact');
+for n = 1 : Nfreq2plot
+    nexttile
     plot_it(abs(reshape(D(n, :), resolution+1, [])),  alpha_m, beta_m, f_to_plot(n));
 end
+
+% for n = 1 : Nfreq2plot
+%     subplot(Nrowcol, Nrowcol, n);
+%     plot_it(abs(reshape(D(n, :), resolution+1, [])),  alpha_m, beta_m, f_to_plot(n));
+% end
 
 end
 
@@ -76,8 +127,6 @@ line([ 0 0], [-1  1] * plot_max * .9, [ 0 0], 'Marker', '.', 'LineStyle', '-', '
 line([ 0 0], [ 0  0], [-1 1] * plot_max * .9, 'Marker', '.', 'LineStyle', '-', 'Color', [.5 .5 .5], 'LineWidth', 1 );
 hold off;
 
-title(sprintf('f = %d Hz', round(f)));
-
 view(view_angle(1), view_angle(2));
 
 box on;
@@ -96,5 +145,7 @@ light('Position', [1 0 0], 'Color', color1);
 light('Position', [0 -1 0], 'Color', color2);
 light('Position', [0 0 1], 'Color', color3);
 set(gca, 'Projection', 'Perspective', 'FontSize', 10);
+
+title(sprintf('%d Hz', round(f)), 'fontsize', 16);
 
 end

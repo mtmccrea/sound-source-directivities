@@ -22,7 +22,7 @@ dft_definition = 'matlab'; % see file _tools/dft.m for the options
 
 % -- musical instruments --
 
-%dataset_file_name = 'musical_instruments/oboe_modern_TUB_RWTH/Oboe_modern_et_ff_c5.mat';
+% dataset_file_name = 'musical_instruments/oboe_modern_TUB_RWTH/Oboe_modern_et_ff_c5.mat';
 
 % -- loudspeakers --
 
@@ -31,7 +31,7 @@ dataset_file_name = 'loudspeakers/loudspeakers_3D3A/Genelec_8351A.mat';
 
 % -- voice --
 
-%dataset_file_name = 'voice/singing_voice_DirPat/singing_voice_a_long_sweep_reg.mat';
+% dataset_file_name = 'voice/singing_voice_DirPat/singing_voice_a_long_sweep_reg.mat';
 
 
 % -------------------------------------------------------------------------
@@ -42,7 +42,7 @@ dataset = load(dataset_file_name);
 dataset.tfs = dft(dataset.irs, dft_definition);
 
 % Change desired order here
-%dataset.order = 3;
+dataset.order = 7;
 
 % compute the coefficients
 dataset.coefficients = least_squares_sh_fit(dataset.order, dataset.tfs, dataset.azimuth, dataset.colatitude, sph_definition);
@@ -54,8 +54,8 @@ fprintf('\n The RMS error between the SH decomposition and the data at the suppo
 fprintf('%f dB\n\n', 20*log10(rms_error));
 
 % plot the directivity
-f_to_plot = [500 1000 2000 4000];
-balloon_plot(dataset.coefficients, dataset.order, dataset.fs, sph_definition, f_to_plot);
+f_to_plot = [500 1200 3600]; % [500 1000 2000 4000];
+[coeffs_plt, D] = balloon_plot(dataset.coefficients, dataset.order, dataset.fs, sph_definition, f_to_plot);
 
 % store a png of the balloon plots
 %saveas(gcf, [dataset_file_name(1:end-3) 'png']);
